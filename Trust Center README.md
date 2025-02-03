@@ -1,4 +1,4 @@
-ZTE manger :
+Trust Center - ZTE manger :
 
 1- open the code file at this repository 
 2- copy the code and add new bookmark page on google chromes 
