@@ -1,0 +1,112 @@
+javascript:ftb();
+function getStatus(){
+    $.ajax({
+        type: "GET",
+        url: "/goform/goform_get_cmd_process",
+        data: {
+            cmd: "dns_mode,prefer_dns_manual,standby_dns_manual,lte_rsrp,rsrq",
+            multi_data: "1"
+        },
+        dataType: "json",
+        success: function(e){
+            for(signal = e, vars = ["dns_mode", "prefer_dns_manual", "standby_dns_manual", "lte_rsrp", "rsrq"], a = 0; a < vars.length; a++) {
+                window[vars[a]] = e[vars[a]];
+            }
+            
+            setgraph("rsrp", lte_rsrp, -130, -70);
+            setgraph("rsrq", rsrq, -16, -3);
+            
+            if("manual" == dns_mode) {
+                dns_mode = prefer_dns_manual + " ," + standby_dns_manual;
+            }
+            
+            dns_mode = dns_mode.replace(/,+$/, "");
+            dns_mode = '<span style="color:red;">' + dns_mode + "</span>";
+            
+            for(a = 0; a < vars.length; a++) {
+                $("#" + vars[a]).html(window[vars[a]]);
+            }
+        }
+    });
+}
+
+function setgraph(a, n, l, s) {
+    x = (n - l) / (s - l) * 100;
+    xs = String(x) + String.fromCharCode(37);
+    e = "#" + a + "b";
+    $(e).width(xs);
+    $(e).html(a + " : " + n);
+    x < 50 ? $(e).css("background-color", "yellow").css("color", "black") : (85 < x ? $(e).css("background-color", "orange") : $(e).css("background-color", "green")).css("color", "white");
+}
+
+function ltebandselection(){
+    var e = prompt("Please input LTE bands number, separated by + char (example 1+3+28). If you want to use every supported band, write 'AUTO'.", "AUTO");
+    if (null != (e = e && e.toLowerCase()) && "" !== e) {
+        var a = e.split("+"), n = 0;
+        var all_bands = "0x20080800C5";
+        if ("AUTO" === e.toUpperCase()) {
+            n = all_bands;
+        } else {
+            for (var l = 0; l < a.length; l++) {
+                n += Math.pow(2, parseInt(a[l]) - 1);
+            }
+            n = "0x" + n.toString(16);
+        }
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+            dataType: "json",
+            success: function(e) {
+                var ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                $.ajax({
+                    type: "POST",
+                    url: "/goform/goform_set_cmd_process",
+                    data: { isTest: "false", goformId: "SET_LTE_BAND_LOCK", lte_band_lock: n, AD: ad },
+                    success: function() { $("#band").html('<span style="color:green;">OK</span>'); },
+                    error: function(err) { console.error("Error setting band lock", err); }
+                });
+            }
+        });
+    }
+}
+
+function setdns(){
+    var e = prompt("Please input 2 DNS servers, separated by ',' (example 1.1.1.1,1.0.0.1). If you want to use PROVIDER settings, write 'AUTO'.", "AUTO");
+    if (null != e && "" !== e) {
+        var a = e.split(",");
+        var dns_mode = "auto" === e ? "auto" : "manual";
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+            dataType: "json",
+            success: function(e) {
+                var ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                $.ajax({
+                    type: "POST",
+                    url: "/goform/goform_set_cmd_process",
+                    data: { isTest: "false", goformId: "ROUTER_DNS_SETTING", dns_mode: dns_mode, prefer_dns_manual: a[0], standby_dns_manual: a[1], AD: ad },
+                    success: function() { $("#band").html('<span style="color:green;">OK</span>'); },
+                    error: function(err) { console.error("Error setting DNS", err); }
+                });
+            }
+        });
+    }
+}
+
+function ftb(){
+    $("body").prepend('<style> .p{border:1px solid #ccc;width:auto;height:20px;} .v{height:20px;} .sb{padding:10px;border-radius:10px;display:inline-block;margin:10px 0 10px 10px;} </style>' +
+        '<div class="p"><div class="v" id="rsrpb"></div></div>' +
+        '<div class="p"><div class="v" id="rsrqb"></div></div>' +
+        '<div class="f"> <ul>' +
+        '</ul></div>' +
+        '<div class="f"> <ul>' +
+        '<li><a style="font-weight:bolder;background-color: #448;color:white;padding: 5px;border-radius:5px;" onclick="ltebandselection()">SET BAND LOCK</a></li>' +
+        '<li><a style="font-weight:bolder;background-color: #448;color:white;padding: 5px;border-radius:5px;" onclick="setdns()">SET DNS</a> <span id="dns_mode"></span></li>' +
+        '</ul></div>'
+    );
+}
+
+signal = "";
+window.setInterval(getStatus, 2500);
