@@ -1,0 +1,280 @@
+javascript:(function() {
+    const styles = `
+        <style>
+            .custom-ui {
+                font-family: Arial, sans-serif;
+                padding: 20px;
+                background: #f9f9f9;
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                margin: 20px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            .custom-ui .title {
+                font-size: 20px;
+                font-weight: bold;
+                color: #333;
+                margin-bottom: 15px;
+            }
+            .custom-ui .section {
+                margin-bottom: 15px;
+            }
+            .custom-ui .section h3 {
+                font-size: 16px;
+                color: #555;
+                margin-bottom: 10px;
+            }
+            .custom-ui .progress-bar {
+                width: 100%;
+                height: 20px;
+                background: #eee;
+                border-radius: 10px;
+                overflow: hidden;
+                margin-bottom: 10px;
+            }
+            .custom-ui .progress-bar .fill {
+                height: 100%;
+                background: #448;
+                color: white;
+                text-align: center;
+                line-height: 20px;
+            }
+            .custom-ui .btn {
+                background: #00bfff; /* Light blue */
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                margin: 5px;
+            }
+            .custom-ui .btn.active {
+                background: #0077be; /* Dark blue */
+            }
+            .custom-ui .btn:hover {
+                opacity: 0.9;
+            }
+            .custom-ui .feedback {
+                margin-top: 10px;
+                font-weight: bold;
+            }
+            .custom-ui .flex-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+        </style>
+    `;
+
+    const ui = `
+        <div class="custom-ui">
+            <div class="title">ZTE MF286D Router Band Lock & DNS Settings</div>
+            <div class="section">
+                <h3>Signal Strength</h3>
+                <div class="progress-bar"><div class="fill" id="rsrpb"></div></div>
+                <div class="progress-bar"><div class="fill" id="rsrqb"></div></div>
+            </div>
+            <div class="section">
+                <h3>Band Lock</h3>
+                <div class="flex-row">
+                    <div id="band-buttons">
+                        <button class="btn" data-band="1">Band 1</button>
+                        <button class="btn" data-band="3">Band 3</button>
+                        <button class="btn" data-band="7">Band 7</button>
+                        <button class="btn" data-band="8">Band 8</button>
+                        <button class="btn" data-band="20">Band 20</button>
+                        <button class="btn" data-band="28">Band 28</button>
+                        <button class="btn" data-band="38">Band 38</button>
+                        <button class="btn" onclick="setAutoBand()">Auto</button>
+                    </div>
+                    <button class="btn" onclick="applyBandLock()">Apply Band Lock</button>
+                </div>
+                <div id="band-feedback" class="feedback"></div>
+            </div>
+            <div class="section">
+                <h3>DNS Settings</h3>
+                <div class="flex-row">
+                    <button class="btn" onclick="setdns()">Set DNS</button>
+                    <button class="btn" onclick="setAutoDNS()">Auto</button>
+                </div>
+                <div id="dns_mode" class="feedback"></div>
+            </div>
+        </div>
+    `;
+
+    document.head.insertAdjacentHTML('beforeend', styles);
+    document.body.insertAdjacentHTML('afterbegin', ui);
+
+    let selectedBands = [];
+
+    document.querySelectorAll('#band-buttons .btn').forEach(button => {
+        if (button.getAttribute('data-band')) {
+            button.addEventListener('click', () => {
+                const band = button.getAttribute('data-band');
+                if (selectedBands.includes(band)) {
+                    selectedBands = selectedBands.filter(b => b !== band);
+                    button.classList.remove('active');
+                } else {
+                    selectedBands.push(band);
+                    button.classList.add('active');
+                }
+            });
+        }
+    });
+
+    window.applyBandLock = function() {
+        if (selectedBands.length === 0) {
+            alert("Please select at least one band!");
+            return;
+        }
+
+        const bandValue = selectedBands.reduce((acc, band) => acc + Math.pow(2, parseInt(band) - 1), 0);
+        const hexValue = "0x" + bandValue.toString(16);
+
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+            dataType: "json",
+            success: function(e) {
+                const ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                $.ajax({
+                    type: "POST",
+                    url: "/goform/goform_set_cmd_process",
+                    data: { isTest: "false", goformId: "SET_LTE_BAND_LOCK", lte_band_lock: hexValue, AD: ad },
+                    success: function() {
+                        document.getElementById("band-feedback").innerHTML = '<span style="color:green;">Band Lock Applied Successfully!</span>';
+                    },
+                    error: function(err) {
+                        console.error("Error setting band lock", err);
+                        document.getElementById("band-feedback").innerHTML = '<span style="color:red;">Error Applying Band Lock!</span>';
+                    }
+                });
+            }
+        });
+    };
+
+    window.setAutoBand = function() {
+        selectedBands = [];
+        document.querySelectorAll('#band-buttons .btn').forEach(button => {
+            button.classList.remove('active');
+        });
+
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+            dataType: "json",
+            success: function(e) {
+                const ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                $.ajax({
+                    type: "POST",
+                    url: "/goform/goform_set_cmd_process",
+                    data: { isTest: "false", goformId: "SET_LTE_BAND_LOCK", lte_band_lock: "AUTO", AD: ad },
+                    success: function() {
+                        document.getElementById("band-feedback").innerHTML = '<span style="color:green;">Auto Band Mode Applied Successfully!</span>';
+                    },
+                    error: function(err) {
+                        console.error("Error setting auto band mode", err);
+                        document.getElementById("band-feedback").innerHTML = '<span style="color:red;">Error Applying Auto Band Mode!</span>';
+                    }
+                });
+            }
+        });
+    };
+
+    window.setdns = function() {
+        var e = prompt("Please input 2 DNS servers, separated by ',' (example 1.1.1.1,1.0.0.1). If you want to use PROVIDER settings, write 'AUTO'.", "AUTO");
+        if (null != e && "" !== e) {
+            var a = e.split(",");
+            var dns_mode = "auto" === e ? "auto" : "manual";
+            $.ajax({
+                type: "GET",
+                url: "/goform/goform_get_cmd_process",
+                data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+                dataType: "json",
+                success: function(e) {
+                    var ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                    $.ajax({
+                        type: "POST",
+                        url: "/goform/goform_set_cmd_process",
+                        data: { isTest: "false", goformId: "ROUTER_DNS_SETTING", dns_mode: dns_mode, prefer_dns_manual: a[0], standby_dns_manual: a[1], AD: ad },
+                        success: function() { document.getElementById("dns_mode").innerHTML = '<span style="color:green;">DNS Settings Applied Successfully!</span>'; },
+                        error: function(err) { console.error("Error setting DNS", err); }
+                    });
+                }
+            });
+        }
+    };
+
+    window.setAutoDNS = function() {
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: { cmd: "wa_inner_version,cr_version,RD", multi_data: "1" },
+            dataType: "json",
+            success: function(e) {
+                var ad = hex_md5(hex_md5(e.wa_inner_version + e.cr_version) + e.RD);
+                $.ajax({
+                    type: "POST",
+                    url: "/goform/goform_set_cmd_process",
+                    data: { isTest: "false", goformId: "ROUTER_DNS_SETTING", dns_mode: "auto", AD: ad },
+                    success: function() { document.getElementById("dns_mode").innerHTML = '<span style="color:green;">Auto DNS Applied Successfully!</span>'; },
+                    error: function(err) { console.error("Error setting auto DNS", err); }
+                });
+            }
+        });
+    };
+
+    window.getStatus = function() {
+        $.ajax({
+            type: "GET",
+            url: "/goform/goform_get_cmd_process",
+            data: {
+                cmd: "dns_mode,prefer_dns_manual,standby_dns_manual,lte_rsrp,rsrq",
+                multi_data: "1"
+            },
+            dataType: "json",
+            success: function(e) {
+                for (signal = e, vars = ["dns_mode", "prefer_dns_manual", "standby_dns_manual", "lte_rsrp", "rsrq"], a = 0; a < vars.length; a++) {
+                    window[vars[a]] = e[vars[a]];
+                }
+
+                setgraph("rsrp", lte_rsrp, -130, -70);
+                setgraph("rsrq", rsrq, -16, -3);
+
+                if ("manual" == dns_mode) {
+                    dns_mode = prefer_dns_manual + " ," + standby_dns_manual;
+                }
+
+                dns_mode = dns_mode.replace(/,+$/, "");
+                dns_mode = '<span style="color:red;">' + dns_mode + "</span>";
+
+                for (a = 0; a < vars.length; a++) {
+                    document.getElementById(vars[a]).innerHTML = window[vars[a]];
+                }
+            }
+        });
+    };
+
+    window.setgraph = function(a, n, l, s) {
+        x = (n - l) / (s - l) * 100;
+        xs = String(x) + String.fromCharCode(37);
+        e = "#" + a + "b";
+        document.querySelector(e).style.width = xs;
+        document.querySelector(e).innerHTML = a + " : " + n;
+        if (x < 50) {
+            document.querySelector(e).style.backgroundColor = "yellow";
+            document.querySelector(e).style.color = "black";
+        } else if (x > 85) {
+            document.querySelector(e).style.backgroundColor = "orange";
+            document.querySelector(e).style.color = "white";
+        } else {
+            document.querySelector(e).style.backgroundColor = "green";
+            document.querySelector(e).style.color = "white";
+        }
+    };
+
+    window.setInterval(getStatus, 2500);
+})();
